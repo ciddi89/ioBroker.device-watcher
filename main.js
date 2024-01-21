@@ -299,7 +299,7 @@ class DeviceWatcher extends utils.Adapter {
 			if (this.configCreateInstanceList) {
 				// instances
 				await this.createDPsForInstances();
-				await this.getAllInstanceData();
+				await this.getInstanceData(`system.adapter.*`);
 				// adapter updates
 				await this.createAdapterUpdateData();
 			} else {
@@ -1997,17 +1997,6 @@ class DeviceWatcher extends utils.Adapter {
 					}
 					break;
 			}
-		}
-	}
-	/**
-	 * get all Instances at start
-	 */
-	async getAllInstanceData() {
-		try {
-			const allInstances = `system.adapter.*`;
-			await this.getInstanceData(allInstances);
-		} catch (error) {
-			this.log.error(`[getInstance] - ${error}`);
 		}
 	}
 
