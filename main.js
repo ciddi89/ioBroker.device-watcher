@@ -2011,8 +2011,23 @@ class DeviceWatcher extends utils.Adapter {
 			for (const [id] of Object.entries(instanceAliveDP)) {
 				if (!(typeof id === 'string' && id.startsWith(`system.adapter.`))) continue;
 
-				// get instance name
+				// get instance object data
+				const objectData = await this.getInstanceObjectData(instanceObject);
+
 				const instanceID = await this.getInstanceName(id);
+				const adapterName = objectData.common.name;
+				const adapterVersion = objectData.common.version;
+				const instanceMode = objectData.common.mode;
+				const isAlive = objectData.common.enabled;
+
+				let scheduleTime = 'N/A';
+				if (instanceMode === 'schedule') {
+					scheduleTime = objectData.common.schedule;
+				}
+
+				let adapterAvailableUpdate = ' - ';
+
+				const instanceObjectPath = `system.adapter.${instanceID}`;
 
 				// get instance connected to host data
 				const instanceConnectedHostDP = `system.adapter.${instanceID}.connected`;
@@ -2021,52 +2036,29 @@ class DeviceWatcher extends utils.Adapter {
 				// get instance connected to device data
 				const instanceConnectedDeviceDP = `${instanceID}.info.connection`;
 				let instanceConnectedDeviceVal;
-				if (instanceConnectedDeviceDP !== undefined && typeof instanceConnectedDeviceDP === 'boolean') {
+				if (this.foreignObjectExists(`${instanceID}.info.connection`)) {
 					instanceConnectedDeviceVal = await this.getInitValue(instanceConnectedDeviceDP);
 				} else {
 					instanceConnectedDeviceVal = 'N/A';
 				}
 
-				// get adapter version
-				const instanceObjectPath = `system.adapter.${instanceID}`;
-				let adapterName;
-				let adapterVersion;
-				let adapterAvailableUpdate = '';
-				let instanceMode;
-				let scheduleTime = 'N/A';
-				const instanceObjectData = await this.getForeignObjectAsync(instanceObjectPath);
-				if (instanceObjectData) {
-					// @ts-ignore
-					adapterName = this.capitalize(instanceObjectData.common.name);
-					adapterVersion = instanceObjectData.common.version;
-					instanceMode = instanceObjectData.common.mode;
-
-					if (instanceMode === 'schedule') {
-						scheduleTime = instanceObjectData.common.schedule;
-					}
-				}
-
+				// get update data
 				await this.getAdapterUpdateData(`admin.*.info.updatesJson`);
 
 				if (this.adapterUpdatesJsonRaw.has(adapterName)) {
 					for (const adapter of this.adapterUpdatesJsonRaw.values()) {
 						adapterAvailableUpdate = adapter.newVersion;
 					}
-				} else {
-					adapterAvailableUpdate = ' - ';
 				}
 
-				let isAlive;
 				let isHealthy;
 				let instanceStatus;
 				if (instanceMode === 'schedule') {
 					const instanceStatusRaw = await this.checkScheduleisHealty(instanceID, scheduleTime);
-					isAlive = instanceStatusRaw[0];
 					isHealthy = instanceStatusRaw[1];
 					instanceStatus = instanceStatusRaw[2];
 				} else if (instanceMode === 'daemon') {
 					const instanceStatusRaw = await this.checkDaemonIsHealthy(instanceID);
-					isAlive = instanceStatusRaw[0];
 					isHealthy = instanceStatusRaw[1];
 					instanceStatus = instanceStatusRaw[2];
 				}
@@ -2076,8 +2068,6 @@ class DeviceWatcher extends utils.Adapter {
 				this.subscribeForeignStates(instanceConnectedHostDP);
 				this.subscribeForeignStates(instanceConnectedDeviceDP);
 				this.subscribeForeignObjects(`system.adapter.*`);
-				// this.subscribeForeignStates('*');
-				// this.subscribeForeignObjects('*');
 
 				// create raw list
 				this.listInstanceRaw.set(instanceID, {
@@ -2114,6 +2104,23 @@ class DeviceWatcher extends utils.Adapter {
 		instance = instance.slice(15); // remove "system.adapter."
 		instance = instance.slice(0, instance.lastIndexOf('.') + 1 - 1); // remove ".alive"
 		return instance;
+	}
+
+	/**
+	 * get Instance Object Data
+	 * @param {any} instanceObject
+	 */
+	async getInstanceObjectData(instanceObject) {
+		try {
+			const objectPath = `system.adapter.${instanceObject}`;
+			const isObjectExists = this.foreignObjectExists(objectPath);
+			if (!isObjectExists) {
+				this.log.warn('[getInstanceObjectData] - Object does not exist');
+			}
+			return await this.getObjectAsync(objectPath);
+		} catch (error) {
+			this.log.error(`[getInstanceObjectData] - ${error}`);
+		}
 	}
 
 	/**
