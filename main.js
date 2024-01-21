@@ -394,7 +394,7 @@ class DeviceWatcher extends utils.Adapter {
 	 */
 	async onStateChange(id, state) {
 		if (state) {
-			this.log.debug(`State changed: ${id} changed ${state.val}`);
+			// this.log.debug(`State changed: ${id} changed ${state.val}`);
 
 			try {
 				/*=============================================
@@ -2012,10 +2012,16 @@ class DeviceWatcher extends utils.Adapter {
 				if (!(typeof id === 'string' && id.startsWith(`system.adapter.`))) continue;
 
 				// get instance object data
-				const objectData = await this.getInstanceObjectData(instanceObject);
-
 				const instanceID = await this.getInstanceName(id);
-				const adapterName = objectData.common.name;
+				const objectData = await this.getInstanceObjectData(instanceID);
+				const instanceConnectedHostDP = `system.adapter.${instanceID}.connected`;
+				const instanceConnectedHostVal = await this.getInitValue(instanceConnectedHostDP);
+				const instanceConnectedDeviceDP = `${instanceID}.info.connection`;
+				let instanceConnectedDeviceVal;
+				let isHealthy;
+				let instanceStatus;
+
+				const adapterName = this.capitalize(objectData.common.name);
 				const adapterVersion = objectData.common.version;
 				const instanceMode = objectData.common.mode;
 				const isAlive = objectData.common.enabled;
@@ -2027,21 +2033,6 @@ class DeviceWatcher extends utils.Adapter {
 
 				let adapterAvailableUpdate = ' - ';
 
-				const instanceObjectPath = `system.adapter.${instanceID}`;
-
-				// get instance connected to host data
-				const instanceConnectedHostDP = `system.adapter.${instanceID}.connected`;
-				const instanceConnectedHostVal = await this.getInitValue(instanceConnectedHostDP);
-
-				// get instance connected to device data
-				const instanceConnectedDeviceDP = `${instanceID}.info.connection`;
-				let instanceConnectedDeviceVal;
-				if (this.foreignObjectExists(`${instanceID}.info.connection`)) {
-					instanceConnectedDeviceVal = await this.getInitValue(instanceConnectedDeviceDP);
-				} else {
-					instanceConnectedDeviceVal = 'N/A';
-				}
-
 				// get update data
 				await this.getAdapterUpdateData(`admin.*.info.updatesJson`);
 
@@ -2051,14 +2042,18 @@ class DeviceWatcher extends utils.Adapter {
 					}
 				}
 
-				let isHealthy;
-				let instanceStatus;
-				if (instanceMode === 'schedule') {
-					const instanceStatusRaw = await this.checkScheduleisHealty(instanceID, scheduleTime);
+				if (instanceMode === 'daemon') {
+					// get instance connected to device data
+					if (this.foreignObjectExists(`${instanceID}.info.connection`)) {
+						instanceConnectedDeviceVal = await this.getInitValue(instanceConnectedDeviceDP);
+					} else {
+						instanceConnectedDeviceVal = 'N/A';
+					}
+					const instanceStatusRaw = await this.checkDaemonIsHealthy(instanceID);
 					isHealthy = instanceStatusRaw[1];
 					instanceStatus = instanceStatusRaw[2];
-				} else if (instanceMode === 'daemon') {
-					const instanceStatusRaw = await this.checkDaemonIsHealthy(instanceID);
+				} else if (instanceMode === 'schedule') {
+					const instanceStatusRaw = await this.checkScheduleisHealty(instanceID, scheduleTime);
 					isHealthy = instanceStatusRaw[1];
 					instanceStatus = instanceStatusRaw[2];
 				}
@@ -2072,7 +2067,7 @@ class DeviceWatcher extends utils.Adapter {
 				// create raw list
 				this.listInstanceRaw.set(instanceID, {
 					Adapter: adapterName,
-					instanceObjectPath: instanceObjectPath,
+					instanceObjectPath: `system.adapter.${instanceID}`,
 					instanceMode: instanceMode,
 					schedule: scheduleTime,
 					adapterVersion: adapterVersion,
@@ -2116,8 +2111,9 @@ class DeviceWatcher extends utils.Adapter {
 			const isObjectExists = this.foreignObjectExists(objectPath);
 			if (!isObjectExists) {
 				this.log.warn('[getInstanceObjectData] - Object does not exist');
+			} else {
+				return await this.getForeignObjectAsync(objectPath);
 			}
-			return await this.getObjectAsync(objectPath);
 		} catch (error) {
 			this.log.error(`[getInstanceObjectData] - ${error}`);
 		}
@@ -2130,9 +2126,11 @@ class DeviceWatcher extends utils.Adapter {
 	async checkDaemonIsHealthy(instanceID) {
 		const connectedHostState = await this.getInitValue(`system.adapter.${instanceID}.connected`);
 		const isAlive = await this.getInitValue(`system.adapter.${instanceID}.alive`);
-		let connectedDeviceState = await this.getInitValue(`${instanceID}.info.connection`);
+		let connectedDeviceState;
 
-		if (connectedDeviceState === undefined) {
+		if (await this.foreignObjectExists(`${instanceID}.info.connection`)) {
+			connectedDeviceState = await this.getInitValue(`${instanceID}.info.connection`);
+		} else {
 			connectedDeviceState = true;
 		}
 
@@ -4239,7 +4237,7 @@ class DeviceWatcher extends utils.Adapter {
 	=============================================*/
 
 	/**
-	 * @param {string} id - id which should be capitalize
+	 * @param {any} id - id which should be capitalize
 	 */
 	capitalize(id) {
 		//make the first letter uppercase
